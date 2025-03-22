@@ -1,0 +1,152 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gardening Assistant Chatbot</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <link rel="stylesheet" href="{% static '/csspages/chatbot.css' %}">
+    <link href="https://fonts.googleapis.com/css2?family=Josefin+Sans:wght@100..700&display=swap" rel="stylesheet">
+    <script type="module" src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.esm.js"></script>
+    <script nomodule src="https://unpkg.com/ionicons@7.1.0/dist/ionicons/ionicons.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+</head>
+<body>
+    <header>
+        <nav class="navbar border-bottom border-body navbar-expand-lg bg-body-tertiary w-100" data-bs-theme="dark">
+            <div class="container-fluid">
+                <button class="btn btn-outline-light" type="button" data-bs-toggle="offcanvas" data-bs-target="#offcanvasExample">
+                    History
+                </button>
+                <a class="navbar-brand justify-content-center d-flex align-items-center w-100" style="margin-left: 40px;">Hi, {{user.username}}</a>
+                <button class="btn btn-outline-light rounded-5" style="width: 10%; height: 40px;" onclick="logoutbtn()">Logout</button>
+            </div>
+        </nav>
+    </header>
+    
+    <div class="offcanvas offcanvas-start" tabindex="-1" id="offcanvasExample">
+        <div class="offcanvas-header">
+            <form action="{% url 'clear_chat_history' %}" method="post">
+                {% csrf_token %}
+                <button class="btn btn-danger" type="submit">Clear Chat</button>
+            </form>
+            <button type="button" class="btn-close" data-bs-dismiss="offcanvas"></button>
+        </div>
+        <div class="offcanvas-body">
+            <div>
+                {% for chat in chat_history reversed %}
+                <div class="history_item">
+                    <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{chat.id}}">
+                        {{chat.question|truncatechars:100}} <br>
+                        <small class="timestamp">{{chat.timestamp}}</small>
+                    </button>
+                    <div class="collapse" id="collapse{{chat.id}}">
+                        <div class="card card-body">{{chat.response}}</div>
+                    </div>
+                </div>
+                {% empty %}
+                    <p class="text-center">No history available</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="welcm text-center">
+        <h1>Ask Gardening Related Questions to</h1>
+        <h1 id="head1">Gardening Assistant Chatbot</h1>
+    </div>
+    
+    <div class="container mt-4">
+        <div class="chat-container" id="chatMessages">
+            {% for chat in chat_history reversed %}
+            <div class="message user-message">
+                <strong>You:</strong> {{chat.question}}
+            </div>
+            <div class="message bot-message">
+                <strong>Gardening AI:</strong> {{chat.response}}
+            </div>
+            <small class="timestamp">{{chat.timestamp|date:"d M Y, H:i"}}</small>
+            {% endfor %}
+        </div>
+        
+        <div class="input-area mt-3">
+            <form action="{% url 'chatbot' %}" method="post" id="chatForm" class="w-100 d-flex">
+                {% csrf_token %}
+                <textarea id="chatInput" name="question" class="chat-input form-control" placeholder="Search here..." rows="1"></textarea>
+                <button class="send-btn" id="send_btn" type="submit">
+                    <ion-icon name="arrow-forward-circle-outline"></ion-icon>
+                </button>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+      document.addEventListener("DOMContentLoaded", function () {
+        const chatForm = document.getElementById("chatForm");
+        const chatInput = document.getElementById("chatInput");
+        const chatMessages = document.getElementById("chatMessages");
+        const historyContainer = document.querySelector(".offcanvas-body");
+    
+        chatForm.onsubmit = async function (event) {
+            event.preventDefault();
+    
+            let userMessage = chatInput.value.trim();
+            if (!userMessage) return;
+    
+            // Add user message to chat window
+            chatMessages.innerHTML += `<div class="message user-message"><strong>You:</strong> ${userMessage}</div>`;
+            chatInput.value = "";
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+            // Show bot thinking message
+            let botThinking = document.createElement("div");
+            botThinking.className = "message bot-message";
+            botThinking.innerHTML = "<strong>Gardening AI:</strong> <em>Typing...</em>";
+            chatMessages.appendChild(botThinking);
+    
+            try {
+                let response = await fetch("{% url 'chatbot' %}", {
+                    method: "POST",
+                    headers: {
+                        "X-CSRFToken": "{{ csrf_token }}",
+                        "Content-Type": "application/x-www-form-urlencoded"
+                    },
+                    body: new URLSearchParams({ "question": userMessage })
+                });
+    
+                let data = await response.json();
+                botThinking.remove();
+    
+                let botResponse = `<div class="message bot-message"><strong>Gardening AI:</strong> ${data.response}</div>`;
+                chatMessages.innerHTML += botResponse;
+                chatMessages.scrollTop = chatMessages.scrollHeight;
+    
+                // **Update the history tab dynamically**
+                let timestamp = new Date().toLocaleString();
+                let historyId = `collapse${Date.now()}`;
+    
+                let historyEntry = `
+                    <div class="history_item">
+                        <button class="btn btn-light" type="button" data-bs-toggle="collapse" data-bs-target="#${historyId}">
+                            ${userMessage.substring(0, 100)} <br>
+                            <small class="timestamp">${timestamp}</small>
+                        </button>
+                        <div class="collapse" id="${historyId}">
+                            <div class="card card-body">${data.response}</div>
+                        </div>
+                    </div>
+                `;
+    
+                historyContainer.insertAdjacentHTML("afterbegin", historyEntry);
+            } catch (error) {
+                botThinking.remove();
+                chatMessages.innerHTML += `<div class="message bot-message error"><strong>Error:</strong> Could not fetch response.</div>`;
+            }
+        };
+    });
+    
+    </script>
+</body>
+</html>
